@@ -1,0 +1,96 @@
+@startuml Mедикаменте To-Be Container Diagram
+!include <C4/C4_Container>
+
+title Контейнерная диаграмма C4 - Медикаменте (To-Be)
+
+Person_Ext(patient, "Пациент", "Записывается на приём, просматривает свои данные")
+Person(admin, "Администратор", "Сотрудник ресепшена")
+Person(doctor, "Врач", "Медицинский специалист")
+Person(cashier, "Кассир", "Принимает платежи")
+Person(accountant, "Бухгалтер", "Обрабатывает платежи")
+Person(warehouse_keeper, "Кладовщик", "Учёт ТМЦ")
+
+System_Ext(lab, "Лаборатория", "Внешняя система обработки анализов")
+System_Ext(bank, "Банк", "Платёжная система")
+System_Ext(accounting_1c, "1C Бухгалтерия", "Учёт платежей и зарплат")
+System_Ext(warehouse_1c, "1C Торговля и склад", "Учёт товарно-материальных ценностей")
+
+System_Boundary(c1, "Медикаменте") {
+    Container(portal, "Клиентский портал", "SPA", "Предоставляет интерфейс для записи на приём, просмотра анализов. \n 2FA, сессионный контроль")
+    Container(mobile_app, "Мобильное приложение", "iOS/Android", "Функционал клиентского портала + push-уведомления. \n 2FA, сессионный контроль")
+    Container(employee_portal, "Портал сотрудников", "SPA", "Интерфейс для работы ресепшена, врачей, кассиров. \n 2FA, сессионный контроль")
+    
+    ContainerDb(crm, "CRM система", "Java/C#, Postgress SQL", "Хранение данных пациентов, управление записями. \n \n  Тэгирование. Feature Flags. Шифрование AES-256. \n Автоочистка через 5 лет")
+    ContainerDb(payment_gw, "Платёжный шлюз", "Java/Kotlin", "Интеграция с банками и ККМ. \n Токенизация")
+    
+    Container(api_gateway, "API Gateway", "Kong/Nginx, Keycloak", "Маршрутизация запросов. Аутентификация")
+    Container(lab_api, "API лаборатории", "Python/Flask", "Безопасный обмен данными с лабораторией. \n Обфускация данных")
+    
+    ContainerDb(data_lake, "Data Lake", "Apache Spark", "Хранилище для BI/ML/Analytics. \n Анонимизированные данные")
+    
+    Container(audit, "Система аудита", "Elasticsearch", "Мониторинг действий с данными. \n Хранение 10 лет")
+    Container(monitoring, "Мониторинг", "Prometheus/Grafana", "Алертинг по подозрительным действиям")
+    
+    Container(file_storage, "Файловое хранилище", "S3/MinIO", "Хранение медицинских документов")
+}
+
+' Основные взаимодействия'
+Rel(patient, portal, "Записывается на приём", "HTTPS")
+Rel(patient, mobile_app, "Получает уведомления", "Push")
+Rel(admin, employee_portal, "Управляет записями", "HTTPS")
+Rel(doctor, employee_portal, "Просматривает журнал", "HTTPS")
+Rel(cashier, employee_portal, "Регистрирует платежи", "HTTPS")
+Rel(accountant, accounting_1c, "Ведёт бухгалтерию", "OLE")
+Rel(warehouse_keeper, warehouse_1c, "Учёт ТМЦ", "OLE")
+
+' Внешние системы'
+Rel(portal, api_gateway, "API запросы", "HTTPS", "TSL 1.3")
+Rel(mobile_app, api_gateway, "API запросы", "HTTPS", "TSL 1.3")
+Rel(employee_portal, api_gateway, "API запросы", "HTTPS", "TSL 1.3")
+
+Rel(api_gateway, crm, "Управление данными", "gRPC","RBAC")
+Rel(api_gateway, payment_gw, "Обработка платежей", "gRPC", "RBAC")
+Rel(api_gateway, lab_api, "Запрос анализов", "HTTPS/mTLS","RBAC")
+
+Rel(lab_api, lab, "Отправка/получение анализов", "HTTPS/mTLS")
+Rel(payment_gw, bank, "Обработка платежей", "PCI DSS")
+Rel(crm, accounting_1c, "Экспорт финансовых данных", "OLE/API")
+Rel(crm, warehouse_1c, "Синхронизация данных пациентов", "OLE/API")
+
+' Хранение данных'
+Rel(crm, data_lake, "Экспорт анонимизированных данных", "Kafka")
+Rel(crm, file_storage, "Хранение мед. документов", "S3 API")
+Rel(lab_api, crm, "Результаты анализов", "HTTPS/mTLS")
+
+' Аудит и мониторинг'
+Rel_R(crm, audit, "Логи действий", "Kafka")
+Rel_R(payment_gw, audit, "Логи платежей", "Kafka")
+Rel_R(employee_portal, audit, "Логи доступа", "Kafka","RBAC")
+Rel(monitoring, audit, "Анализ логов", "PromQL")
+Rel(monitoring, crm, "Метрики доступа", "Prometheus")
+
+skinparam legend {
+  backgroundColor #Blue
+  LegendTextColor #000000
+}
+
+
+
+legend right
+  **Технологии безопасности:**
+  **Шифрование**:
+  - TLS 1.3 для внешних API
+  - AES-256 для PII
+  **Контроль доступа**:
+  - RBAC/ABAC
+  - JWT-токены
+  - Биометрия в мобильном приложении
+  **Защита данных**:
+  - Автоматическое маскирование
+  - Аудит всех операций
+  **Интеграции**:
+  - Токенизация платежных данных (PCI DSS)
+  - Обфускация ФИО при передаче в лабораторию
+end legend
+
+@enduml

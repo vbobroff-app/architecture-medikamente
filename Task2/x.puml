@@ -1,0 +1,83 @@
+@startuml Медикаменте To-Be (MVP)
+!include <C4/C4_Container>
+
+title Контейнерная диаграмма C4 - Медикаменте (To-Be) с усиленной Data Privacy
+
+' === Персонажи ==='
+Person_Ext(patient, "Пациент", "Использует портал и мобильное приложение")
+Person(admin, "Администратор", "Управляет записями через Employee Portal")
+Person(doctor, "Врач", "Доступ к медкартам с RBAC")
+Person(accountant, "Бухгалтер", "Работает с 1С через безопасный API")
+
+' === Внешние системы ==='
+System_Ext(lab, "Лаборатория", "API с mTLS и обфускацией данных")
+System_Ext(bank, "Банк", "PCI DSS-совместимый платёжный шлюз")
+System_Ext(accounting_1c, "1C Бухгалтерия", "Интеграция через OLE с аудитом")
+
+' === Основная система ==='
+System_Boundary(c1, "Медикаменте") {
+    ' --- Клиентские приложения ---
+    Container(portal, "Клиентский портал", "React", "SPA с JWT-аутентификацией")
+    Container(mobile_app, "Мобильное приложение", "Flutter", "Биометрия + TLS Pinning")
+    
+    ' --- Сервисы ---'
+    Container(api_gateway, "API Gateway", "Kong", "
+        • mTLS для лабораторий
+        • Rate limiting
+        • Валидация JWT")
+    
+    Container(crm, "CRM система", "Java/Spring", """
+        • Шифрование PII (AES-256)
+        • Тегирование данных (#PHI, #ФЗ-152)
+        • Автоматическое удаление через 5 лет""")
+    
+    Container(payment_gw, "Платёжный шлюз", "Kotlin", """
+        • PCI DSS Level 1
+        • Токенизация карт
+        • Аудит всех транзакций""")
+    
+    ' --- Хранилища ---'
+    ContainerDb(postgres, "Основная БД", "PostgreSQL", """
+        • Transparent Data Encryption
+        • Ролевой доступ (RBAC)
+        • Маскирование для dev-сред""")
+    
+    ContainerDb(s3, "Файловое хранилище", "MinIO", """
+        • Шифрование S3 SSE-KMS
+        • WORM-политики для меддокументов""")
+    
+    Container(audit, "Аудит", "ELK Stack", """
+        • Немодифицируемые логи
+        • Алёрты на подозрительные действия
+        • Хранение 10 лет""")
+}
+
+' === Связи ==='
+Rel(patient, portal, "HTTPS с HSTS", "Запись на приём")
+Rel(patient, mobile_app, "Push/Biometric Auth", "Просмотр анализов")
+
+Rel(api_gateway, crm, "gRPC + TLS", "Управление данными")
+Rel(crm, postgres, "JDBC + TLS", "Хранение PII")
+Rel(crm, s3, "Presigned URLs", "Сканы документов")
+
+Rel(api_gateway, lab, "mTLS + обфускация", "Обмен анализами")
+Rel(payment_gw, bank, "PCI DSS API", "Обработка платежей")
+
+' === Легенда безопасности ==='
+legend right
+  == Политики Data Privacy ==
+  1. **Хранение**:
+    - PII: AES-256 + тегирование
+    - Меддокументы: WORM-режим
+  2. **Удаление**:
+    - Через 5 лет (ФЗ-152)
+    - Автоматический скрипт очистки
+  3. **Передача**:
+    - TLS 1.3/mTLS
+    - Обфускация для лабораторий
+  4. **Контроль**:
+    - RBAC + ABAC
+    - Ежедневные аудит-отчёты
+endlegend
+
+@enduml
